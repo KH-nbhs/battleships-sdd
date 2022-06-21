@@ -18,6 +18,7 @@ const connections = [null, null]
 
 io.on('connection', socket => {
     //console.log('New WS Connection')
+    socket.emit('message', 'Player joined');
 
     //Find an available player number
     let playerIndex = -1
@@ -27,6 +28,12 @@ io.on('connection', socket => {
             break
         }
     }
+
+    // Receiving chat message
+
+    socket.on('chatmessage', msg => {
+        io.emit('message', msg)
+    }) 
 
     // Tell the connecting client what player number they are
 

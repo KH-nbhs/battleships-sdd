@@ -12,14 +12,13 @@ document.addEventListener('DOMContentLoaded', () => {
   const rotateButton = document.querySelector('#rotate')
   const turnDisplay = document.querySelector('#whose-go')
   const infoDisplay = document.querySelector('#info')
-  const singlePlayerButton = document.querySelector('#singlePlayerButton')
-  const multiPlayerButton = document.querySelector('#multiPlayerButton')
+  const setupButtons = document.getElementById('setup-buttons')
+
   const userSquares = []
   const computerSquares = []
   const takenSquares = []
   let markedSquare = 0
   let isThereMarked = false
-  let neighbourCount = 0
 
   let isHorizontal = true
   let isGameOver = false
@@ -27,131 +26,32 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const width = 10
 
-  let gameMode = "";
   let playerNum = 0;
   let ready = false;
   let enemyReady = false;
   let allShipsPlaced = false;
   let shotFired = -1;
 
-  // Select Player Mode
-  singlePlayerButton.addEventListener('click', startSinglePlayer)
-  multiPlayerButton.addEventListener('click', startMultiPlayer)
 
+  let singlePlayerGenerated = false;
+  const musicButton = document.querySelector('.mscbtn')
+  const backgroundMusic = document.getElementById("background-music")
 
+  musicButton.addEventListener('click', toggleMusic)
 
-  //Multiplayer
-  function startMultiPlayer() {
-    gameMode = "multiPlayer"
-
-    const socket = io();
-
-    // Get your player number
-    socket.on('player-number', num => {
-      if(num === -1) {
-        infoDisplay.innerHTML = "Sorry, the server is full"
-      } else {
-        playerNum = parseInt(num)
-        if(playerNum === 1) currentPlayer = "enemy"
-  
-        console.log(playerNum)
-      
-        // Get other player status
-        socket.emit('check-players')
-      }
-    })
-
-    // Another player has connected or disconnected
-    socket.on('player-connection', num => {
-      console.log(`Player number ${num} has connected or disconnected`)
-      playerConnectedOrDisconnected(num)
-    })
-
-    // On enemy ready
-    socket.on('enemy-ready', num => {
-      enemyReady = true
-      playerReady(num)
-      if (ready) playGameMulti(socket)
-    })
-
-    // Check player status
-    socket.on('check-players', players => {
-      players.forEach((p,i) => {
-        if(p.connected) playerConnectedOrDisconnected(i)
-        if(p.ready) {
-          playerReady(i)
-          if (i !== playerNum) enemyReady = true 
-        }
-      })
-    })
-
-    // On Timeout
-    socket.on('timeout', () => {
-      infoDisplay.innerHTML = 'You have reached the 10 minute limit'
-    })
-
-    // Ready button click
-    startButton.addEventListener('click', () => {
-      if(allShipsPlaced) playGameMulti(socket)
-      else infoDisplay.innerHTML = "Please place all ships"
-    })
-
-    // Set up event listener for firing
-    computerSquares.forEach(square => {
-      square.addEventListener('click', () => {
-        if (currentPlayer === 'user' && ready && enemyReady) {
-          shotFired = square.dataset.id
-          socket.emit('fire', shotFired)
-        }
-      })
-    })
-
-    // On Fire Recieved
-    socket.on('fire', id => {
-      enemyGo(id)
-      const square = userSquares[id]
-      socket.emit('fire-reply', square.classList)
-      playGameMulti(socket)
-    })
-
-    // On Fire Reply Recieved
-    socket.on('fire-reply', classList => {
-      revealSquare(classList)
-      playGameMulti(socket)
-    })
-
-    function playerConnectedOrDisconnected(num) {
-      let player = `.p${parseInt(num)+1}`
-      document.querySelector(`${player} .connected span`).classList.toggle('green')
-      if(parseInt(num) === playerNum) document.querySelector(player).style.fontWeight = 'bold'
-    } 
-  }
-
-  //Single Player
-  function startSinglePlayer() {
-    gameMode = "singlePlayer"
-
-    generate(shipArray[0])
-    generate(shipArray[1])
-    generate(shipArray[2])
-    generate(shipArray[3])
-    generate(shipArray[4])
-
-    startButton.addEventListener('click', playGameSingle)
-  }
-
-  //Create Board
-  function createBoard(grid, squares, width) {
-    for (let i = 0; i < width * width; i++) {
-      const square = document.createElement('div')
-      square.dataset.id = i
-      grid.appendChild(square)
-      squares.push(square)
+  // Toggle music
+  function toggleMusic() {
+    //console.log(musicButton.classList)
+    if (musicButton.classList.contains('mscoff')) {
+      musicButton.classList.add('mscon')
+      musicButton.classList.remove('mscoff')
+      backgroundMusic.play()
+    } else {
+      musicButton.classList.remove('mscon')
+      musicButton.classList.add('mscoff')
+      backgroundMusic.pause()
     }
   }
-
-  createBoard(userGrid, userSquares, width)
-  createBoard(computerGrid, computerSquares, width)
 
   //Ships
   const shipArray = [
@@ -192,9 +92,170 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   ]
 
+  createBoard(userGrid, userSquares, width)
+  createBoard(computerGrid, computerSquares, width)
+
+
+  // Select Player Mode
+  if (gameMode === 'singlePlayer') {
+    startSinglePlayer()
+  } else {
+    startMultiPlayer()
+  }
+
+
+  //Multiplayer
+  function startMultiPlayer() {
+
+    const socket = io();
+    const messages = document.getElementById('messages');
+    const msgForm = document.getElementById('msgForm');
+
+    //Receiving chat message
+    socket.on('message', data => {
+      console.log(data)
+      appendMessages(data)
+    })
+
+    // Send chat message
+    msgForm.addEventListener('submit', e => {
+      e.preventDefault()
+      socket.emit('chatmessage', msgForm.msg.value)
+      console.log('submit from msgfrom', msgForm.msg.value)
+      msgForm.msg.value = '';
+
+
+    })
+
+    // Displaying chat message
+    function appendMessages(message) {
+      const html = `<div>${message}</div>`
+      messages.innerHTML += html
+    }
+
+    // Get your player number
+    socket.on('player-number', num => {
+      if (num === -1) {
+        infoDisplay.innerHTML = "Sorry, the server is full"
+      } else {
+        playerNum = parseInt(num)
+        if (playerNum === 1) currentPlayer = "enemy"
+
+        console.log(playerNum)
+
+        // Get other player status
+        socket.emit('check-players')
+      }
+    })
+
+    // Another player has connected or disconnected
+    socket.on('player-connection', num => {
+      console.log(`Player number ${num} has connected or disconnected`)
+      playerConnectedOrDisconnected(num)
+    })
+
+    // On enemy ready
+    socket.on('enemy-ready', num => {
+      enemyReady = true
+      playerReady(num)
+      if (ready) {
+        playGameMulti(socket)
+        setupButtons.style.display = 'none'
+      }
+    })
+
+    // Check player status
+    socket.on('check-players', players => {
+      players.forEach((p, i) => {
+        if (p.connected) playerConnectedOrDisconnected(i)
+        if (p.ready) {
+          playerReady(i)
+          if (i !== playerNum) enemyReady = true
+        }
+      })
+    })
+
+    // On Timeout
+    socket.on('timeout', () => {
+      infoDisplay.innerHTML = 'You have reached the 10 minute limit'
+    })
+
+    // Ready button click
+    startButton.addEventListener('click', () => {
+      if (allShipsPlaced) playGameMulti(socket)
+      else {
+        infoDisplay.innerHTML = "Please place all ships"
+      }
+    })
+
+    // Set up event listener for firing
+    computerSquares.forEach(square => {
+      square.addEventListener('click', () => {
+        if (currentPlayer === 'user' && ready && enemyReady) {
+          shotFired = square.dataset.id
+          socket.emit('fire', shotFired)
+        }
+      })
+    })
+
+    // On Fire Recieved
+    socket.on('fire', id => {
+      enemyGo(id)
+      const square = userSquares[id]
+      socket.emit('fire-reply', square.classList)
+      playGameMulti(socket)
+    })
+
+    // On Fire Reply Recieved
+    socket.on('fire-reply', classList => {
+      revealSquare(classList)
+      playGameMulti(socket)
+    })
+
+    function playerConnectedOrDisconnected(num) {
+      let player = `.p${parseInt(num) + 1}`
+      document.querySelector(`${player} .connected`).classList.toggle('active')
+      if (parseInt(num) === playerNum) document.querySelector(player).style.fontWeight = 'bold'
+    }
+  }
+
+  //Single Player
+  function startSinglePlayer() {
+    if (!singlePlayerGenerated) {
+      singlePlayerGenerated = true
+
+      generate(shipArray[0])
+      generate(shipArray[1])
+      generate(shipArray[2])
+      generate(shipArray[3])
+      generate(shipArray[4])
+
+      startButton.addEventListener('click', () => {
+        if (allShipsPlaced) {
+          infoDisplay.innerHTML = ''
+          setupButtons.style.display = 'none'
+          playGameSingle()
+        } else {
+          infoDisplay.innerHTML = "Please place all ships"
+        }
+      })
+    }
+  }
+  //Create Board
+  function createBoard(grid, squares, width) {
+    for (let i = 0; i < width * width; i++) {
+      const square = document.createElement('div')
+      square.dataset.id = i
+      grid.appendChild(square)
+      squares.push(square)
+    }
+  }
+
+
   //Draw the computers' ships in random locations
   function generate(ship) {
-    console.log('ship',ship)
+    console.log('ship', ship)
+
     let randomDirection = Math.floor(Math.random() * ship.directions.length)
     let current = ship.directions[randomDirection]
 
@@ -208,8 +269,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const isAtLeftEdge = current.some(index => (randomStart + index) % width === 0) // determine if a tile exists at left edge. i.e. has remainder 0 because in first column of '10s
 
     if (!isTaken && !isAtRightEdge && !isAtLeftEdge) current.forEach(index => computerSquares[randomStart + index].classList.add('taken', ship.name)), console.log('generated')// Ensure all conditions are met before generating
-    
-     else generate(ship), console.log('reroll') // Regenerate if conditions not met
+
+    else generate(ship), console.log('reroll') // Regenerate if conditions not met
   }
 
 
@@ -222,6 +283,7 @@ document.addEventListener('DOMContentLoaded', () => {
       cruiser.classList.toggle('cruiser-container-vertical')
       battleship.classList.toggle('battleship-container-vertical')
       carrier.classList.toggle('carrier-container-vertical')
+
       isHorizontal = false
       console.log('rotate set to ' + isHorizontal)
       return
@@ -232,6 +294,7 @@ document.addEventListener('DOMContentLoaded', () => {
       cruiser.classList.toggle('cruiser-container-vertical')
       battleship.classList.toggle('battleship-container-vertical')
       carrier.classList.toggle('carrier-container-vertical')
+
       isHorizontal = true
       console.log('rotate set to ' + isHorizontal)
       return
@@ -239,7 +302,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   rotateButton.addEventListener('click', rotate)
 
-  //move around user ship
+  //Move around user ship
   ships.forEach(ship => ship.addEventListener('dragstart', dragStart))
   userSquares.forEach(square => square.addEventListener('dragstart', dragStart))
   userSquares.forEach(square => square.addEventListener('dragover', dragOver))
@@ -276,16 +339,20 @@ document.addEventListener('DOMContentLoaded', () => {
     dragLeaveCount++
   }
 
+  // Record and check whether ships are placed in valid positions.
   function dragDrop() {
     console.log('dragLeaveCount: ' + dragLeaveCount)
     dragLeaveCount = 0
     console.groupEnd()
     console.group('placeDetails')
+
     let shipNameWithLastId = draggedShip.lastChild.id
     let shipClass = shipNameWithLastId.slice(0, -2)
     console.log('shipClass: ' + shipClass)
+
     let lastShipIndex = parseInt(shipNameWithLastId.substr(-1))
     console.log('lengthFromSelected: ' + lastShipIndex)
+
     let shipLastId = lastShipIndex + parseInt(this.dataset.id)
     console.log('shipLastId: ' + shipLastId)
     const notAllowedHorizontal = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 1, 11, 21, 31, 41, 51, 61, 71, 81, 91, 2, 22, 32, 42, 52, 62, 72, 82, 92, 3, 13, 23, 33, 43, 53, 63, 73, 83, 93]
@@ -303,9 +370,8 @@ document.addEventListener('DOMContentLoaded', () => {
     console.groupEnd()
 
     let allowed = true
-    
     for (let i = 0; i < draggedShipLength; i++) {
-      
+
       if ((isHorizontal && takenSquares.includes((parseInt(this.dataset.id) - selectedShipIndex + i)))) {
         allowed = false
 
@@ -315,24 +381,29 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
 
-    //!(takenSquares.includes((parseInt(this.dataset.id) - selectedShipIndex + i)))
     if (isHorizontal && !newNotAllowedHorizontal.includes(shipLastId) && shipLastId < 100 && allowed) {
       console.log('placed')
       for (let i = 0; i < draggedShipLength; i++) {
-        userSquares[parseInt(this.dataset.id) - selectedShipIndex + i].classList.add('taken', shipClass)
+        let directionClass
+        if (i === 0) directionClass = 'start'
+        if (i === draggedShipLength - 1) directionClass = 'end'
+        userSquares[parseInt(this.dataset.id) - selectedShipIndex + i].classList.add('taken', 'horizontal', directionClass, shipClass)
         takenSquares.push(parseInt(this.dataset.id) - selectedShipIndex + i)
       }
       //As long as the index of the ship you are dragging is not in the newNotAllowedVertical array. This means that sometimes if you drag the ship by its
       //index-1 , index-2 and so on, the ship will rebound back to the displayGrid.
     } else if (!isHorizontal && !newNotAllowedVertical.includes(shipLastId) && shipLastId < 100 && allowed) {
       for (let i = 0; i < draggedShipLength; i++) {
-        userSquares[parseInt(this.dataset.id) - selectedShipIndex + width * i].classList.add('taken', shipClass)
+        let directionClass
+        if (i === 0) directionClass = 'start'
+        if (i === draggedShipLength - 1) directionClass = 'end'
+        userSquares[parseInt(this.dataset.id) - selectedShipIndex + width * i].classList.add('taken', 'vertical', directionClass, shipClass)
         takenSquares.push(parseInt(this.dataset.id) - selectedShipIndex + width * i)
       }
     } else return
-
+    //Return ships placed in illegal positions on the grid
     displayGrid.removeChild(draggedShip)
-    if(!displayGrid.querySelector('.ship')) allShipsPlaced = true
+    if (!displayGrid.querySelector('.ship')) allShipsPlaced = true
     console.log('takenSquares: ', takenSquares)
 
 
@@ -344,8 +415,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   //Game Logic for MultiPlayer
   function playGameMulti(socket) {
-    if(isGameOver) return
-    if(!ready) {
+    setupButtons.style.display = 'none'
+    if (isGameOver) return
+    if (!ready) {
       socket.emit('player-ready')
       ready = true
       playerReady(playerNum)
@@ -356,31 +428,31 @@ document.addEventListener('DOMContentLoaded', () => {
         turnDisplay.innerHTML = 'Your Go'
       }
       if (currentPlayer === 'enemy')
-      turnDisplay.innerHTML = "Enemy's Go"
+        turnDisplay.innerHTML = "Enemy's Go"
     }
   }
 
   function playerReady(num) {
     let player = `.p${parseInt(num) + 1}`
-    document.querySelector(`${player} .ready span`).classList.toggle('green')
+    document.querySelector(`${player} .ready`).classList.toggle('active')
   }
 
   //Game Logic for Single Player
   function playGameSingle() {
     if (isGameOver) return
 
+    //Display current turn as user
     if (currentPlayer === 'user') {
-      turnDisplay.innerHTML = 'Your Go' //Display current turn as user
-
+      turnDisplay.innerHTML = 'Your Go'
+      //Check if square is occupied or not and apply appropriate action
       computerSquares.forEach(square => square.addEventListener('click', function (e) {
         shotFired = square.dataset.id
-        revealSquare(square.classList) //Check if square is occupied or not and apply appropriate action
+        revealSquare(square.classList)
       }))
     }
-    
+    //Display current turn as computer
     if (currentPlayer === 'enemy') {
-      turnDisplay.innerHTML = 'Computers Go' //Display current turn as computer
-
+      turnDisplay.innerHTML = 'Computers Go'
       setTimeout(enemyGo, 1000)
     }
   }
@@ -407,6 +479,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (obj.includes('taken')) {
         enemySquare.classList.add('boom')
       } else {
+        infoDisplay.innerHTML = ''
         enemySquare.classList.add('miss')
       }
       checkForWins()
@@ -424,14 +497,18 @@ document.addEventListener('DOMContentLoaded', () => {
   function enemyGo(square) {
     if (gameMode === 'singlePlayer') square = Math.floor(Math.random() * userSquares.length)
     if (!userSquares[square].classList.contains('boom') && isThereMarked == false) {
-      userSquares[square].classList.add('boom')
+      const hit = userSquares[square].classList.contains('taken')
+      userSquares[square].classList.add(hit ? 'boom' : 'miss')
+
       if (userSquares[square].classList.contains('destroyer')) cpuDestroyerCount++, markedSquare = square
       if (userSquares[square].classList.contains('submarine')) cpuSubmarineCount++, markedSquare = square
       if (userSquares[square].classList.contains('cruiser')) cpuCruiserCount++, markedSquare = square
       if (userSquares[square].classList.contains('battleship')) cpuBattleshipCount++, markedSquare = square
       if (userSquares[square].classList.contains('carrier')) cpuCarrierCount++, markedSquare = square
+
       checkForWins()
       console.log(markedSquare, isThereMarked)
+
     } else if (gameMode === 'singlePlayer') enemyGo()
     currentPlayer = 'user'
     turnDisplay.innerHTML = 'Your Go'
@@ -441,43 +518,43 @@ document.addEventListener('DOMContentLoaded', () => {
     let enemy = 'computer'
     if (gameMode === 'multiPlayer') enemy = 'enemy'
     if (destroyerCount === 2) {
-      infoDisplay.innerHTML = `You sunk the ${enemy}s destroyer`
+      infoDisplay.innerHTML = `Alert: You sunk the ${enemy}s destroyer`
       destroyerCount = 10
     }
     if (submarineCount === 3) {
-      infoDisplay.innerHTML = `You sunk the ${enemy}'s submarine`
+      infoDisplay.innerHTML = `Alert: You sunk the ${enemy}'s submarine`
       submarineCount = 10
     }
     if (cruiserCount === 3) {
-      infoDisplay.innerHTML = `You sunk the ${enemy}'s cruiser`
+      infoDisplay.innerHTML = `Alert: You sunk the ${enemy}'s cruiser`
       cruiserCount = 10
     }
     if (battleshipCount === 4) {
-      infoDisplay.innerHTML = `You sunk the ${enemy}'s battleship`
+      infoDisplay.innerHTML = `Alert: You sunk the ${enemy}'s battleship`
       battleshipCount = 10
     }
     if (carrierCount === 5) {
-      infoDisplay.innerHTML = `You sunk the ${enemy}'s carrier`
+      infoDisplay.innerHTML = `Alert: You sunk the ${enemy}'s carrier`
       carrierCount = 10
     }
     if (cpuDestroyerCount === 2) {
-      infoDisplay.innerHTML = `${enemy} sunk your Destroyer`
+      infoDisplay.innerHTML = `Alert: ${enemy} sunk your Destroyer`
       cpuDestroyerCount = 10
     }
     if (cpuSubmarineCount === 3) {
-      infoDisplay.innerHTML = `${enemy} sunk your Submarine`
+      infoDisplay.innerHTML = `Alert: ${enemy} sunk your Submarine`
       cpuSubmarineCount = 10
     }
     if (cpuCruiserCount === 3) {
-      infoDisplay.innerHTML = `${enemy} sunk your Cruiser`
+      infoDisplay.innerHTML = `Alert: ${enemy} sunk your Cruiser`
       cpuCruiserCount = 10
     }
     if (cpuBattleshipCount === 4) {
-      infoDisplay.innerHTML = `${enemy} sunk your Battleship`
+      infoDisplay.innerHTML = `Alert: ${enemy} sunk your Battleship`
       cpuBattleshipCount = 10
     }
     if (cpuCarrierCount === 5) {
-      infoDisplay.innerHTML = `${enemy} sunk your Carrier`
+      infoDisplay.innerHTML = `Alert: ${enemy} sunk your Carrier`
       cpuCarrierCount = 10
     }
     if ((destroyerCount + submarineCount + cruiserCount + battleshipCount + carrierCount) === 50) {
